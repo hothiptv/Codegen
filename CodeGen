@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeGen Studio - Tạo Web Bằng Gemini</title>
+    <style>
+        /* CSS Styling */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        h1 { color: #1a73e8; text-align: center; margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; }
+        input[type="text"], textarea { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 1em; }
+        textarea { resize: vertical; min-height: 150px; }
+        button { background-color: #1a73e8; color: white; padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; margin-right: 10px; transition: background-color 0.3s; }
+        button:hover { background-color: #0c60d5; }
+        .api-controls { display: flex; align-items: flex-end; margin-bottom: 20px; gap: 10px; }
+        .api-controls button { flex-grow: 0; }
+        .result-section { margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; display: none; }
+        .controls-output button { background-color: #34a853; }
+        .controls-output button:nth-child(2) { background-color: #fbbc05; }
+        .controls-output button:nth-child(3) { background-color: #ea4335; }
+
+        /* Màn hình Chạy Code */
+        #run-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 1000; display: none; flex-direction: column; }
+        #run-screen button { position: absolute; top: 10px; right: 10px; z-index: 1001; background-color: #333; }
+        #preview-iframe { width: 100%; height: 100%; border: none; }
+        
+        #loadingSpinner { display: none; margin-top: 15px; font-weight: bold; color: #1a73e8; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🛠️ CodeGen Studio - Tạo Web với Gemini API</h1>
+        
+        <div class="api-controls">
+            <div style="flex-grow: 1;">
+                <label for="apiKey">Gemini API Key (Bắt buộc):</label>
+                <input type="text" id="apiKey" placeholder="Dán khóa API của bạn tại đây...">
+            </div>
+            <button id="saveKeyBtn">Lưu & Kiểm tra</button>
+            <button id="youtubeSearchBtn">Cách lấy Key API?</button>
+        </div>
+        <p id="keyStatus" style="font-weight: bold;">Chưa có Key API được lưu.</p>
+
+        <label for="prompt">Mô tả trang web bạn muốn Gemini tạo:</label>
+        <textarea id="prompt" placeholder="Ví dụ: Tạo trang web giới thiệu một quán cà phê tên là 'Code Brew', tông màu nâu, có hình ảnh ly cà phê lớn và nút 'Menu' ở giữa trang."></textarea>
+        
+        <button id="generateBtn">✨ BẮT ĐẦU TẠO CODE</button>
+        
+        <p id="loadingSpinner">Đang tạo code... Vui lòng chờ vài giây.</p>
+        
+        <div id="resultSection" class="result-section">
+            <h2>Mã Code Đã Tạo:</h2>
+            <div class="controls-output">
+                <button id="copyCodeBtn">📄 Copy Code</button>
+                <button id="viewCodeBtn">🔍 Xem Code</button>
+                <button id="runCodeBtn">▶ Chạy Code</button>
+            </div>
+            <textarea id="codeOutput" readonly style="margin-top: 15px; min-height: 250px; background: #272822; color: #f8f8f2;"></textarea>
+        </div>
+    </div>
+
+    <div id="run-screen">
+        <button id="exitRunBtn">❌ THOÁT</button>
+        <iframe id="preview-iframe"></iframe>
+    </div>
+
+    <script>
+        const API_KEY_STORAGE = 'geminiApiKey';
+        // THAY THẾ BẰNG ENDPOINT CỦA BẠN
+        const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+        // --- DOM Elements ---
+        const apiKeyInput = document.getElementById('apiKey');
+        const saveKeyBtn = document.getElementById('saveKeyBtn');
+        const keyStatus = document.getElementById('keyStatus');
+        const youtubeSearchBtn = document.getElementById('youtubeSearchBtn');
+        const promptTextarea = document.getElementById('prompt');
+        const generateBtn = document.getElementById('generateBtn');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const resultSection = document.getElementById('resultSection');
+        const codeOutput = document.getElementById('codeOutput');
+        const copyCodeBtn = document.getElementById('copyCodeBtn');
+        const viewCodeBtn = document.getElementById('viewCodeBtn');
+        const runCodeBtn = document.getElementById('runCodeBtn');
+        const runScreen = document.getElementById('run-screen');
+        const exitRunBtn = document.getElementById('exitRunBtn');
+        const previewIframe = document.getElementById('preview-iframe');
+
+        let currentApiKey = localStorage.getItem(API_KEY_STORAGE);
+        
+        // --- Hàm Khởi tạo ---
+        function initialize() {
+            if (currentApiKey) {
+                apiKeyInput.value = currentApiKey;
+                updateKeyStatus(true);
+            } else {
+                updateKeyStatus(false);
+            }
+        }
+        
+        function updateKeyStatus(isStored) {
+            if (isStored) {
+                keyStatus.textContent = "✅ Key API đã được lưu và sẵn sàng.";
+                keyStatus.style.color = '#34a853';
+            } else {
+                keyStatus.textContent = "⚠️ Chưa có Key API được lưu. Vui lòng dán Key.";
+                keyStatus.style.color = 'red';
+            }
+        }
+
+        // --- Xử lý Lưu Key API ---
+        saveKeyBtn.addEventListener('click', () => {
+            const newKey = apiKeyInput.value.trim();
+            if (newKey) {
+                localStorage.setItem(API_KEY_STORAGE, newKey);
+                currentApiKey = newKey;
+                updateKeyStatus(true);
+                alert('Key API đã được lưu thành công!');
+            } else {
+                alert('Vui lòng nhập Key API.');
+            }
+        });
+
+        // --- Xử lý Tìm kiếm YouTube ---
+        youtubeSearchBtn.addEventListener('click', () => {
+            const query = encodeURIComponent("cách lấy key api gemini");
+            // Mở tab mới với kết quả tìm kiếm YouTube
+            window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
+        });
+
+        // --- Xử lý Gọi API Gemini ---
+        generateBtn.addEventListener('click', async () => {
+            if (!currentApiKey) {
+                alert('Lỗi: Vui lòng lưu Key API trước khi tạo code.');
+                return;
+            }
+
+            const userPrompt = promptTextarea.value.trim();
+            if (!userPrompt) {
+                alert('Lỗi: Vui lòng nhập mô tả trang web.');
+                return;
+            }
+
+            loadingSpinner.style.display = 'block';
+            resultSection.style.display = 'none';
+            generateBtn.disabled = true;
+
+            // Prompt hướng dẫn Gemini
+            const systemInstruction = "Bạn là một công cụ tạo mã HTML/CSS/JS. Nhiệm vụ của bạn là tạo MỘT trang web HTML hoàn chỉnh (bao gồm thẻ <html>, <head>, <body>). BẠN PHẢI CHỈ TRẢ LỜI BẰNG MÃ CODE HTML, KHÔNG THÊM BẤT KỲ VĂN BẢN GIẢI THÍCH, LỜI CHÀO, HOẶC CHỮ NGHĨA NÀO KHÁC. Dưới đây là mô tả của người dùng:";
+            
+            const payload = {
+                contents: [{ 
+                    role: "user", 
+                    parts: [{ text: `${systemInstruction}\n\n${userPrompt}` }]
+                }],
+                config: {
+                    // Cài đặt để giảm thiểu văn bản giải thích không phải code
+                    temperature: 0.1 
+                }
+            };
+
+            try {
+                const response = await fetch(`${GEMINI_API_ENDPOINT}?key=${currentApiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Lỗi API: ${response.statusText} (${response.status}). Key API có thể không hợp lệ hoặc đã hết hạn.`);
+                }
+
+                const data = await response.json();
+                
+                // Trích xuất mã code từ phản hồi
+                const generatedText = data.candidates[0].content.parts[0].text;
+                
+                // Thường thì Gemini sẽ trả về code trong dấu markdown, cần loại bỏ nó
+                let code = generatedText.replace(/```html|```/g, '').trim(); 
+                if (!code.startsWith('<!DOCTYPE html>')) {
+                    // Đảm bảo code là HTML, nếu không, đây là lỗi trả lời
+                    code = generatedText.trim(); 
+                }
+
+                codeOutput.value = code;
+                resultSection.style.display = 'block';
+
+            } catch (error) {
+                alert(`Lỗi trong quá trình tạo code: ${error.message}`);
+                console.error('Lỗi Gemini API:', error);
+                codeOutput.value = `Không thể tạo code. Vui lòng kiểm tra API Key và Console log. Chi tiết lỗi: ${error.message}`;
+                resultSection.style.display = 'block';
+            } finally {
+                loadingSpinner.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        });
+
+        // --- Xử lý Các Nút Kết quả ---
+
+        // 1. Copy Code
+        copyCodeBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(codeOutput.value).then(() => {
+                alert('Mã code đã được copy vào clipboard!');
+            }).catch(err => {
+                console.error('Lỗi khi copy: ', err);
+                alert('Lỗi khi copy code.');
+            });
+        });
+
+        // 2. Xem Code (Hiển thị code trong cửa sổ modal)
+        viewCodeBtn.addEventListener('click', () => {
+             alert(codeOutput.value); // Có thể thay bằng modal đẹp hơn nếu dùng thư viện
+        });
+
+        // 3. Chạy Code (Hiển thị trong Iframe)
+        runCodeBtn.addEventListener('click', () => {
+            const codeToRun = codeOutput.value;
+            if (!codeToRun) {
+                alert('Không có code để chạy.');
+                return;
+            }
+            
+            // Dùng srcdoc để nhúng mã HTML vào Iframe
+            previewIframe.srcdoc = codeToRun;
+            runScreen.style.display = 'flex'; // Hiển thị màn hình chạy
+        });
+
+        // 4. Thoát màn hình Chạy Code
+        exitRunBtn.addEventListener('click', () => {
+            runScreen.style.display = 'none';
+            previewIframe.srcdoc = ''; // Xóa nội dung Iframe
+        });
+
+        // Khởi tạo trạng thái khi tải trang
+        initialize();
+    </script>
+</body>
+</html>
