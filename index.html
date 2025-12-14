@@ -27,6 +27,10 @@
         #preview-iframe { width: 100%; height: 100%; border: none; }
         
         #loadingSpinner { display: none; margin-top: 15px; font-weight: bold; color: #1a73e8; }
+        
+        /* Màu cho nút Chat */
+        #chatBtn { background-color: #fbbc05 !important; }
+        #chatBtn:hover { background-color: #e09400 !important; }
     </style>
 </head>
 <body>
@@ -48,6 +52,7 @@
         <textarea id="prompt" placeholder="Ví dụ: Tạo trang web giới thiệu một quán cà phê tên là 'Code Brew', tông màu nâu, có hình ảnh ly cà phê lớn và nút 'Menu' ở giữa trang."></textarea>
         
         <button id="generateBtn">✨ BẮT ĐẦU TẠO CODE</button>
+        <button id="chatBtn">💬 Trò chuyện với Gemini</button> 
         
         <p id="loadingSpinner">Đang tạo code... Vui lòng chờ vài giây.</p>
         
@@ -79,6 +84,7 @@
         const youtubeSearchBtn = document.getElementById('youtubeSearchBtn');
         const promptTextarea = document.getElementById('prompt');
         const generateBtn = document.getElementById('generateBtn');
+        const chatBtn = document.getElementById('chatBtn'); // ĐÃ THÊM
         const loadingSpinner = document.getElementById('loadingSpinner');
         const resultSection = document.getElementById('resultSection');
         const codeOutput = document.getElementById('codeOutput');
@@ -130,7 +136,13 @@
             window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
         });
 
-        // --- Xử lý Gọi API Gemini (ĐÃ SỬA LỖI 400) ---
+        // --- Xử lý Nút Trò chuyện (MỚI) ---
+        chatBtn.addEventListener('click', () => {
+            const chatURL = 'https://gemini.google.com/'; 
+            window.open(chatURL, '_blank'); 
+        });
+
+        // --- Xử lý Gọi API Gemini (System Prompt MỚI & Sửa lỗi 400) ---
         generateBtn.addEventListener('click', async () => {
             if (!currentApiKey) {
                 alert('Lỗi: Vui lòng lưu Key API trước khi tạo code.');
@@ -146,9 +158,10 @@
             loadingSpinner.style.display = 'block';
             resultSection.style.display = 'none';
             generateBtn.disabled = true;
+            chatBtn.disabled = true;
 
-            // Prompt hướng dẫn Gemini
-            const systemInstruction = "Bạn là một công cụ tạo mã HTML/CSS/JS. Nhiệm vụ của bạn là tạo MỘT trang web HTML hoàn chỉnh (bao gồm thẻ <html>, <head>, <body>). BẠN PHẢI CHỈ TRẢ LỜI BẰNG MÃ CODE HTML, KHÔNG THÊM BẤT KỲ VĂN BẢN GIẢI THÍCH, LỜI CHÀO, HOẶC CHỮ NGHĨA NÀO KHÁC.";
+            // System Prompt ĐÃ CẬP NHẬT
+            const systemInstruction = "Bạn là công cụ tạo mã AI, được tạo ra bởi Nguyễn Trọng An, một người đam mê lập trình, với mục tiêu giúp mọi người dễ dàng tạo ra trang web bằng AI. Nhiệm vụ của bạn là tạo MỘT trang web HTML hoàn chỉnh (bao gồm thẻ <html>, <head>, <body>). BẠN PHẢI CHỈ TRẢ LỜI BẰNG MÃ CODE HTML, KHÔNG THÊM BẤT KỲ VĂN BẢN GIẢI THÍCH, LỜI CHÀO, HOẶC CHỮ NGHĨA NÀO KHÁC.";
             
             // Payload đã sửa đổi: dùng generationConfig và lồng prompt vào contents
             const payload = {
@@ -174,7 +187,6 @@
                     try {
                         errorDetails = JSON.parse(errorDetails).error.message;
                     } catch (e) {
-                        // Nếu không parse được JSON, dùng mã lỗi HTTP
                         errorDetails = `Mã lỗi: ${response.status}. ${response.statusText}`;
                     }
                     throw new Error(`Lỗi API: ${response.status} (${errorDetails}). Key API hoặc cấu trúc yêu cầu bị sai.`);
@@ -199,6 +211,7 @@
             } finally {
                 loadingSpinner.style.display = 'none';
                 generateBtn.disabled = false;
+                chatBtn.disabled = false;
             }
         });
 
